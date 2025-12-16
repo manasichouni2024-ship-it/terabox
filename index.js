@@ -1,10 +1,8 @@
-// index.js - FIXED FOR CLOUDFLARE WORKERS (Forcing Mongoose Import)
+// index.js - চূড়ান্ত ফিক্স (Mongoose-এর জন্য require() ব্যবহার)
 
-import { Telegraf, Markup } from 'telegraf';
-import axios from 'axios';
-// FIX: Using import * as mongoose to ensure the connect function is correctly imported 
-// in Cloudflare Worker's ESM context.
-import * as mongoose from 'mongoose'; 
+const { Telegraf, Markup } = require('telegraf'); // Reverting to require
+const axios = require('axios'); // Reverting to require
+const mongoose = require('mongoose'); // <-- FIX: Using require() for compatibility
 
 // =========================================================
 // 1. CONFIGURATION (USER-PROVIDED VALUES)
@@ -21,7 +19,7 @@ const TERABOX_DL_API = "https://wadownloader.amitdas.site/api/TeraBox/main/?url=
 const VIDEO_DELETE_DELAY_MS = 20000; // 20 seconds
 
 // =========================================================
-// 2. MONGODB SCHEMA AND CONNECTION (RESTRUCTURED)
+// 2. MONGODB SCHEMA AND CONNECTION (RESTRUCTUREড)
 // =========================================================
 
 let isConnected = false;
@@ -37,13 +35,11 @@ const configSchema = new mongoose.Schema({
     value: String
 });
 
-// Models are defined globally but interaction is guarded by connectToDatabase
 const User = mongoose.model('User', userSchema);
 const Config = mongoose.model('Config', configSchema);
 
 /**
  * Ensures a connection to MongoDB is established only once.
- * MUST be called at the beginning of any function that interacts with the database.
  */
 async function connectToDatabase() {
     if (isConnected) {
@@ -51,19 +47,17 @@ async function connectToDatabase() {
     }
 
     try {
-        // The mongoose variable is now the imported module object
         await mongoose.connect(MONGO_URI);
         isConnected = true;
         console.log('✅ MongoDB connection successful.');
     } catch (err) {
-        // Log error but allow worker to proceed
         console.error('❌ MongoDB connection failed:', err);
     }
 }
 
 
 // =========================================================
-// 3. UTILITY AND DB FUNCTIONS (ALL ARE ASYNC AND CALL connectToDatabase)
+// 3. UTILITY AND DB FUNCTIONS 
 // =========================================================
 
 function isAdmin(userId) {
