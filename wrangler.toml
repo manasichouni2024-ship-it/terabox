@@ -1,3 +1,8 @@
-name = "terabox-video-viewer"
+name = "terabox"
 main = "index.js" 
 compatibility_date = "2025-12-16"
+
+
+compatibility_flags = [
+  "nodejs_compat"
+]
