@@ -8,9 +8,9 @@ const mongoose = require('mongoose');
 // 1. CONFIGURATION (REPLACE WITH YOUR ACTUAL VALUES)
 // =========================================================
 
-const BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"; // Your Bot Token
-const MONGO_URI = "YOUR_MONGODB_CONNECTION_STRING_HERE"; // Your MongoDB URI
-const ADMIN_IDS_RAW = "1234567890,9876543210"; // Your numeric Telegram User IDs (comma-separated)
+const BOT_TOKEN = "8545244121:AAGovQWgpng0WkrKJfjQ6HmtWkK3izZJ0tg"; // Your Bot Token
+const MONGO_URI = "mongodb+srv://manasichouni2024_db_user:sayan6799@cluster0.jsolkip.mongodb.net/?appName=Cluster0"; // Your MongoDB URI
+const ADMIN_IDS_RAW = "6295533968,9876543210"; // Your numeric Telegram User IDs (comma-separated)
 const ADMIN_IDS = ADMIN_IDS_RAW.split(',').map(id => parseInt(id.trim()));
 
 // TeraBox and Access APIs
