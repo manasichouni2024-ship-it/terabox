@@ -1,4 +1,4 @@
-// Cloudflare Workers environment does not need 'dotenv', it loads secrets automatically.
+// Cloudflare Workers environment loads secrets automatically.
 const { Telegraf, Markup } = require('telegraf');
 const { MongoClient } = require('mongodb');
 const axios = require('axios');
@@ -6,16 +6,13 @@ const axios = require('axios');
 // --- 1. CONFIGURATION (Loaded from Cloudflare Secrets) ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const MONGO_URI = process.env.MONGO_URI;
-// Convert ADMIN_ID string from environment to an integer
 const ADMIN_ID = parseInt(process.env.ADMIN_ID); 
-const TERABOX_API_BASE = process.env.TERABOX_API_BASE || "https://wadownloader.amitdas.site/api/TeraBox/main/?url=";
-const ACCESS_LINK_API = process.env.ACCESS_LINK_API || "https://vplink.in/api?api=bbdcdbe30fa584eb68269dd61da632c591b2ee80&url=https://t.me/TERABOX_0_BOT&alias=terabot&format=text";
-const ACCESS_REDIRECT_PREFIX = process.env.ACCESS_REDIRECT_PREFIX || "https://vplink.in/terabot";
-const VIDEO_DELETE_DELAY = parseInt(process.env.VIDEO_DELETE_DELAY || 20) * 1000; // in milliseconds
+const TERABOX_API_BASE = process.env.TERABOX_API_BASE;
+const ACCESS_LINK_API = process.env.ACCESS_LINK_API;
+const ACCESS_REDIRECT_PREFIX = process.env.ACCESS_REDIRECT_PREFIX;
+const VIDEO_DELETE_DELAY = parseInt(process.env.VIDEO_DELETE_DELAY) * 1000; // in milliseconds
 
 // Initialize Bot (in Webhook Mode)
-// Note: Telegraf needs an empty token during setup in Workers, 
-// as the actual processing happens via the handleUpdate call.
 const bot = new Telegraf(BOT_TOKEN); 
 
 // --- 2. DATABASE CONNECTION AND UTILITIES ---
@@ -23,7 +20,7 @@ let db;
 let client;
 
 async function connectDB() {
-    if (db) return; // Check if connection already exists
+    if (db) return;
     try {
         client = new MongoClient(MONGO_URI);
         await client.connect();
@@ -31,18 +28,16 @@ async function connectDB() {
         console.log("MongoDB connected successfully.");
     } catch (error) {
         console.error("Failed to connect to MongoDB:", error);
-        // In a worker, we should not exit, just log the error
     }
 }
 
 const usersCollection = () => db.collection('users');
 const configCollection = () => db.collection('config');
 
-// ... [Helper functions like getOrCreateUser, hasAccess, grant24HourAccess remain the same] ...
 async function getOrCreateUser(userId, userDetails) {
     if (!db) await connectDB();
     let user = await usersCollection().findOne({ _id: userId });
-    // ... [Rest of the function logic] ...
+
     if (!user) {
         const newUser = {
             _id: userId,
@@ -95,7 +90,7 @@ const videoKeyboard = (mediaUrl) => {
 // --- 4. TELEGRAM HANDLERS ---
 
 bot.start(async (ctx) => {
-    await connectDB(); // Ensure DB is connected before accessing user data
+    await connectDB();
     const userDetails = ctx.from;
     await getOrCreateUser(userDetails.id, userDetails);
 
@@ -108,11 +103,14 @@ bot.start(async (ctx) => {
         );
     }
 
-    const welcomeText = (
-        "👋 **Welcome! I'm your Terabox Video Viewer Bot.**\n\n"
-        "Use this bot to easily view videos from any Terabox link.\n\n"
-        "Please provide your **Terabox video link** 👇"
-    );
+    // --- FIX APPLIED HERE: Using Template Literals (Backticks) ---
+    const welcomeText = `
+👋 **Welcome! I'm your Terabox Video Viewer Bot.**
+
+Use this bot to easily view videos from any Terabox link.
+
+Please provide your **Terabox video link** 👇
+`;
 
     ctx.replyWithHTML(welcomeText);
 });
@@ -138,11 +136,12 @@ bot.on('text', async (ctx) => {
                 const mediaUrl = data.media_url;
                 const title = data.title || 'Terabox Video';
 
-                const captionText = (
-                    `🎬 **${title}**\n\n` +
-                    "⚠️ **Forward the video to save it!** ⚠️\n" +
-                    `It will **automatically delete in ${process.env.VIDEO_DELETE_DELAY || 20} seconds**.`
-                );
+                const captionText = `
+🎬 **${title}**
+
+⚠️ **Forward the video to save it!** ⚠️
+It will **automatically delete in ${process.env.VIDEO_DELETE_DELAY || 20} seconds**.
+`;
 
                 const sentMessage = await ctx.replyWithVideo(
                     mediaUrl, {
@@ -154,7 +153,7 @@ bot.on('text', async (ctx) => {
 
                 await ctx.deleteMessage(loadingMsg.message_id);
 
-                // Automatic message deletion (Workers use setTimeout for this)
+                // Automatic message deletion 
                 setTimeout(async () => {
                     try {
                         await ctx.telegram.deleteMessage(sentMessage.chat.id, sentMessage.message_id);
@@ -174,10 +173,11 @@ bot.on('text', async (ctx) => {
         }
 
     } else {
-        const balanceMsg = (
-            "❌ **Insufficient Balance**\n\n"
-            "You need **24-hour access** to view Terabox videos. Use the button below to get access."
-        );
+        const balanceMsg = `
+❌ **Insufficient Balance**
+
+You need **24-hour access** to view Terabox videos. Use the button below to get access.
+`;
         ctx.replyWithHTML(balanceMsg, accessKeyboard());
     }
 });
@@ -194,11 +194,13 @@ bot.action('get_access', async (ctx) => {
         if (redirectLink.startsWith(ACCESS_REDIRECT_PREFIX)) {
             const finalLink = redirectLink;
 
-            const linkMessage = (
-                "🔗 **24 Hour Access Link**\n\n" +
-                "To confirm your access, **click the link below**. Complete the steps on the link, and then **return to the bot and use the /start command again**.\n\n" +
-                `➡️ [Access Link](${finalLink})`
-            );
+            const linkMessage = `
+🔗 **24 Hour Access Link**
+
+To confirm your access, **click the link below**. Complete the steps on the link, and then **return to the bot and use the /start command again**.
+
+➡️ [Access Link](${finalLink})
+`;
 
             await ctx.editMessageText(
                 linkMessage, {
@@ -299,11 +301,11 @@ bot.command('broadcast', async (ctx) => {
     
     const usersCursor = usersCollection().find({}, { projection: { _id: 1 } });
     
+    // Note: await usersCursor.forEach is used for better async iteration in workers
     await usersCursor.forEach(async (user) => {
         try {
             await ctx.telegram.sendMessage(user._id, broadcastText, { parse_mode: 'HTML' });
             successCount++;
-            // Small delay to avoid flood limits
             await new Promise(resolve => setTimeout(resolve, 50)); 
         } catch (error) {
             failureCount++;
@@ -319,27 +321,23 @@ bot.command('broadcast', async (ctx) => {
 
 // --- 7. WORKER ENTRY POINT ---
 
-// This function processes the incoming Telegram update
 async function handleUpdate(request) {
-    // Telegraf processes the incoming update and executes the corresponding handlers
     try {
         const update = await request.json();
         await bot.handleUpdate(update);
-        // Telegram expects a simple 200 OK response quickly
         return new Response('OK', { status: 200 });
     } catch (error) {
-        console.error("Worker Error processing update:", error);
+        console.error("Worker Error processing update:", error.message);
         return new Response('Error', { status: 500 });
     }
 }
 
-// The Cloudflare Worker event listener
 addEventListener('fetch', event => {
-    // Only process POST requests coming from Telegram (the webhook)
+    // We only care about POST requests from Telegram
     if (event.request.method === 'POST') {
         event.respondWith(handleUpdate(event.request));
     } else {
-        // Handle GET requests (e.g., to verify the worker is running)
+        // Response for Webhook testing or GET requests
         event.respondWith(new Response('Terabox Bot Worker is Running. Please set the Webhook URL.', { status: 200 }));
     }
 });
