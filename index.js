@@ -9,8 +9,8 @@ import axios from 'axios';
 // ১. কাস্টম কনফিগারেশন ভেরিয়েবল
 // =========================================================
 
-const BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"; 
-const ADMIN_IDS_RAW = "1234567890,9876543210"; 
+const BOT_TOKEN = "8545244121:AAGovQWgpng0WkrKJfjQ6HmtWkK3izZJ0tg"; 
+const ADMIN_IDS_RAW = "6295533968,9876543210"; 
 const ADMIN_IDS = ADMIN_IDS_RAW.split(',').map(id => parseInt(id.trim()));
 
 // টিউটোরিয়াল ভিডিও ফাইল ID (প্রথমে অ্যাডমিন দ্বারা সেট করতে হবে)
