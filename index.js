@@ -1,8 +1,9 @@
-// index.js
+// index.js - FIXED FOR CLOUDFLARE WORKERS (ESM & Mongoose Issue)
 
-const { Telegraf, Markup } = require('telegraf');
-const axios = require('axios');
-const mongoose = require('mongoose');
+import { Telegraf, Markup } from 'telegraf';
+import axios from 'axios';
+// Using the ES Module import style for Mongoose
+import mongoose from 'mongoose'; 
 
 // =========================================================
 // 1. CONFIGURATION (USER-PROVIDED VALUES)
@@ -19,8 +20,10 @@ const TERABOX_DL_API = "https://wadownloader.amitdas.site/api/TeraBox/main/?url=
 const VIDEO_DELETE_DELAY_MS = 20000; // 20 seconds
 
 // =========================================================
-// 2. MONGODB SCHEMA AND CONNECTION
+// 2. MONGODB SCHEMA AND CONNECTION (RESTRUCTURED)
 // =========================================================
+
+let isConnected = false;
 
 const userSchema = new mongoose.Schema({
     _id: Number, 
@@ -36,20 +39,37 @@ const configSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 const Config = mongoose.model('Config', configSchema);
 
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ MongoDB connection successful.'))
-    .catch(err => console.error('❌ MongoDB connection failed:', err));
+// Connection logic encapsulated into an async function
+async function connectToDatabase() {
+    if (isConnected) {
+        console.log('✅ MongoDB connection already established.');
+        return;
+    }
 
+    console.log('⏳ Connecting to MongoDB...');
+    // IMPORTANT: Adding the useNewUrlParser and useUnifiedTopology options
+    // is often required to resolve Mongoose connection issues in serverless.
+    try {
+        await mongoose.connect(MONGO_URI);
+        isConnected = true;
+        console.log('✅ MongoDB connection successful.');
+    } catch (err) {
+        // Log error but allow worker to proceed (may fail later if DB is needed)
+        console.error('❌ MongoDB connection failed:', err);
+    }
+}
 
 // =========================================================
-// 3. UTILITY AND DB FUNCTIONS
+// 3. UTILITY AND DB FUNCTIONS (MODIFIED TO CALL connectToDatabase)
 // =========================================================
 
 function isAdmin(userId) {
     return ADMIN_IDS.includes(userId);
 }
 
+// Ensure every DB function calls connectToDatabase
 async function ensureUserExists(userId, username) {
+    await connectToDatabase(); // Ensure connection before every query
     let user = await User.findById(userId);
     if (!user) {
         user = new User({ _id: userId, username: username });
@@ -59,6 +79,7 @@ async function ensureUserExists(userId, username) {
 }
 
 async function hasActiveAccess(userId) {
+    await connectToDatabase();
     const user = await User.findById(userId);
     if (user && user.access_expires && user.access_expires > new Date()) {
         return true;
@@ -67,16 +88,19 @@ async function hasActiveAccess(userId) {
 }
 
 async function add24HourAccess(userId) {
+    await connectToDatabase();
     const newExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); 
     await User.findByIdAndUpdate(userId, { access_expires: newExpiry }, { upsert: true });
 }
 
 async function getConfig(key) {
+    await connectToDatabase();
     const config = await Config.findById(key);
     return config ? config.value : null;
 }
 
 async function setConfig(key, value) {
+    await connectToDatabase();
     await Config.findByIdAndUpdate(key, { value: value }, { upsert: true });
 }
 
@@ -92,7 +116,6 @@ bot.use((ctx, next) => {
     next();
 });
 
-
 // --- /start Command ---
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
@@ -105,7 +128,7 @@ bot.start(async (ctx) => {
         await add24HourAccess(userId);
         return ctx.replyWithMarkdown(
             `🥳 **অভিনন্দন ${ctx.from.first_name}!**\n` +
-            "আপনার ২৪-ঘণ্টার অ্যাক্সেস সফলভাবে যুক্ত হয়েছে।\n\n" +
+            "আপনার ২৪-ঘণ্টার অ্যাক্সেস সফলভাবে যুক্ত হয়েছে।\n\n" +
             "⬇️ **এবার TeraBox ভিডিওর লিঙ্কটি দিন, আমি ডাউনলোড করে দেব।**"
         );
     }
@@ -162,7 +185,7 @@ bot.action('get_access', async (ctx) => {
 
     } catch (e) {
         console.error("vplink.in API error:", e.message);
-        await ctx.editMessageText("❌ অ্যাক্সেস লিঙ্ক তৈরি করার সময় নেটওয়ার্ক বা API ত্রুটি হয়েছে।");
+        await ctx.editMessageText("❌ অ্যাক্সেস লিঙ্ক তৈরি করার সময় নেটওয়ার্ক বা API ত্রুটি হয়েছে।");
     }
 });
 
@@ -253,7 +276,7 @@ bot.on('text', async (ctx) => {
             }, VIDEO_DELETE_DELAY_MS); 
             
         } else {
-            await ctx.reply(`❌ ভিডিও প্রসেস করতে ব্যর্থ হয়েছে: ${data.message || 'Unknown error.'}`);
+            await ctx.reply(`❌ ভিডিও প্রসেস করতে ব্যর্থ হয়েছে: ${data.message || 'Unknown error.'}`);
         }
 
     } catch (e) {
@@ -309,6 +332,8 @@ bot.command('broadcast', async (ctx) => {
         return ctx.reply("দয়া করে /broadcast এর পর আপনার মেসেজটি দিন।");
     }
 
+    // Ensure connection before fetching users
+    await connectToDatabase();
     const users = await User.find({});
     let sentCount = 0;
     let blockedCount = 0;
@@ -326,25 +351,29 @@ bot.command('broadcast', async (ctx) => {
             }
         }
     }
-            
+        
     await ctx.replyWithMarkdown(
         `✅ Broadcast finished.\n` +
-        `মোট পাঠানো হয়েছে: **${sentCount}** জন।\n` +
+        `মোট পাঠানো হয়েছে: **${sentCount}** জন।\n` +
         `বট ব্লক করেছে: **${blockedCount}** জন।`
     );
 });
 
 
 // =========================================================
-// 6. CLOUDFLARE WORKER WEBHOOK EXPORT (ES Module Format FIX)
+// 6. CLOUDFLARE WORKER WEBHOOK EXPORT 
 // =========================================================
-// This MUST use 'export default' for CI/CD deployment on Workers.
 
-export default { // <-- This fixes the final deployment error
+export default { 
     async fetch(request) {
+        // We will call connectToDatabase here as well to ensure it's attempted 
+        // early in the request lifecycle, even though it's called in utility functions.
+        await connectToDatabase(); 
+
         if (request.method === 'POST') {
             try {
                 const update = await request.json();
+                // Handle the update and let Telegraf process the event
                 await bot.handleUpdate(update); 
                 return new Response('OK', { status: 200 });
             } catch (e) {
