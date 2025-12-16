@@ -1,12 +1,10 @@
-// This file assumes 'USER_DATA_KV' is bound in wrangler.toml/Secrets
-
+// Cloudflare Workers environment loads secrets automatically.
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 
 // --- 1. CONFIGURATION (Loaded from Cloudflare Secrets) ---
 // KV Binding is exposed as a global variable: USER_DATA_KV
-// If you named your binding something else, change it here:
-const USER_DATA_KV = USER_DATA_KV; // Global binding from Workers
+const USER_DATA_KV = USER_DATA_KV; 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_ID = parseInt(process.env.ADMIN_ID); 
 const TERABOX_API_BASE = process.env.TERABOX_API_BASE;
@@ -128,7 +126,6 @@ bot.on('text', async (ctx) => {
         const loadingMsg = await ctx.reply('🔄 Loading video... Please wait.');
 
         try {
-            // API Call remains the same
             const fullApiUrl = `${TERABOX_API_BASE}${encodeURIComponent(text)}`;
             const response = await axios.get(fullApiUrl, { timeout: 30000 });
             const data = response.data;
@@ -184,8 +181,8 @@ You need **24-hour access** to view Terabox videos. Use the button below to get 
 });
 
 // --- 5. CALLBACK QUERY HANDLERS ---
+
 bot.action('get_access', async (ctx) => {
-    // ... [Logic remains the same] ...
     await ctx.answerCbQuery('Generating access link...');
 
     try {
