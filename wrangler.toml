@@ -2,7 +2,12 @@ name = "terabox"
 main = "index.js" 
 compatibility_date = "2025-12-16"
 
+
+compatibility_flags = [
+  "nodejs_compat" 
+]
+
+
 [[kv_namespaces]]
 binding = "USER_DATA_KV"
-id = "e125daa4e1bbd49f16ad819f6ef3a0b7021" 
-
+id = "e125daa4e1bbd49f16ad819f6ef3a0b7021"
