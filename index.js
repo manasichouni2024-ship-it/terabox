@@ -1,9 +1,8 @@
-// index.js - FIXED FOR CLOUDFLARE WORKERS (ESM & Mongoose Issue)
+// index.js - FIXED FOR CLOUDFLARE WORKERS (Stricter ESM and Async DB Connection)
 
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
-// Using the ES Module import style for Mongoose
-import mongoose from 'mongoose'; 
+import mongoose from 'mongoose'; // Ensure this is treated as an ES Module import
 
 // =========================================================
 // 1. CONFIGURATION (USER-PROVIDED VALUES)
@@ -36,40 +35,47 @@ const configSchema = new mongoose.Schema({
     value: String
 });
 
+// Models are defined globally but interaction is guarded by connectToDatabase
 const User = mongoose.model('User', userSchema);
 const Config = mongoose.model('Config', configSchema);
 
-// Connection logic encapsulated into an async function
+/**
+ * Ensures a connection to MongoDB is established only once.
+ * MUST be called at the beginning of any function that interacts with the database.
+ */
 async function connectToDatabase() {
     if (isConnected) {
-        console.log('✅ MongoDB connection already established.');
+        // console.log('✅ MongoDB connection already established.');
         return;
     }
 
-    console.log('⏳ Connecting to MongoDB...');
-    // IMPORTANT: Adding the useNewUrlParser and useUnifiedTopology options
-    // is often required to resolve Mongoose connection issues in serverless.
+    // console.log('⏳ Connecting to MongoDB...');
     try {
+        // The standard fix for Mongoose in serverless environments is to ensure 
+        // the connection attempt is wrapped in an async function and called on demand.
         await mongoose.connect(MONGO_URI);
         isConnected = true;
         console.log('✅ MongoDB connection successful.');
     } catch (err) {
-        // Log error but allow worker to proceed (may fail later if DB is needed)
+        // In Cloudflare Workers, a database connection failure during initialization 
+        // can be catastrophic. We log the error but allow the worker to handle 
+        // the request, relying on the `isConnected` flag.
         console.error('❌ MongoDB connection failed:', err);
+        // Note: isConnected remains false if the connection fails.
     }
 }
 
+
 // =========================================================
-// 3. UTILITY AND DB FUNCTIONS (MODIFIED TO CALL connectToDatabase)
+// 3. UTILITY AND DB FUNCTIONS (ALL ARE ASYNC AND CALL connectToDatabase)
 // =========================================================
 
 function isAdmin(userId) {
     return ADMIN_IDS.includes(userId);
 }
 
-// Ensure every DB function calls connectToDatabase
 async function ensureUserExists(userId, username) {
-    await connectToDatabase(); // Ensure connection before every query
+    await connectToDatabase();
     let user = await User.findById(userId);
     if (!user) {
         user = new User({ _id: userId, username: username });
@@ -318,6 +324,7 @@ bot.on('video', async (ctx, next) => {
 bot.command('usercount', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply("🚫 Access Denied.");
     
+    await connectToDatabase();
     const count = await User.countDocuments({});
     await ctx.replyWithMarkdown(`📊 বটের মোট ইউজারের সংখ্যা: **${count}** জন।`);
 });
@@ -366,14 +373,13 @@ bot.command('broadcast', async (ctx) => {
 
 export default { 
     async fetch(request) {
-        // We will call connectToDatabase here as well to ensure it's attempted 
-        // early in the request lifecycle, even though it's called in utility functions.
+        // Attempt connection at the start of the request, which initializes Mongoose
+        // and sets up the models defined above.
         await connectToDatabase(); 
 
         if (request.method === 'POST') {
             try {
                 const update = await request.json();
-                // Handle the update and let Telegraf process the event
                 await bot.handleUpdate(update); 
                 return new Response('OK', { status: 200 });
             } catch (e) {
