@@ -1,11 +1,13 @@
-// Cloudflare Workers environment loads secrets automatically.
+// This file assumes 'USER_DATA_KV' is bound in wrangler.toml/Secrets
+
 const { Telegraf, Markup } = require('telegraf');
-const { MongoClient } = require('mongodb');
 const axios = require('axios');
 
 // --- 1. CONFIGURATION (Loaded from Cloudflare Secrets) ---
+// KV Binding is exposed as a global variable: USER_DATA_KV
+// If you named your binding something else, change it here:
+const USER_DATA_KV = USER_DATA_KV; // Global binding from Workers
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const MONGO_URI = process.env.MONGO_URI;
 const ADMIN_ID = parseInt(process.env.ADMIN_ID); 
 const TERABOX_API_BASE = process.env.TERABOX_API_BASE;
 const ACCESS_LINK_API = process.env.ACCESS_LINK_API;
@@ -15,60 +17,61 @@ const VIDEO_DELETE_DELAY = parseInt(process.env.VIDEO_DELETE_DELAY) * 1000; // i
 // Initialize Bot (in Webhook Mode)
 const bot = new Telegraf(BOT_TOKEN); 
 
-// --- 2. DATABASE CONNECTION AND UTILITIES ---
-let db;
-let client;
-
-async function connectDB() {
-    if (db) return;
-    try {
-        client = new MongoClient(MONGO_URI);
-        await client.connect();
-        db = client.db('terabox_bot_db');
-        console.log("MongoDB connected successfully.");
-    } catch (error) {
-        console.error("Failed to connect to MongoDB:", error);
-    }
-}
-
-const usersCollection = () => db.collection('users');
-const configCollection = () => db.collection('config');
+// --- 2. KV HELPER FUNCTIONS (MongoDB replacement) ---
 
 async function getOrCreateUser(userId, userDetails) {
-    if (!db) await connectDB();
-    let user = await usersCollection().findOne({ _id: userId });
+    const key = `user_${userId}`;
+    let userString = await USER_DATA_KV.get(key);
 
-    if (!user) {
-        const newUser = {
-            _id: userId,
-            username: userDetails.username || '',
-            first_name: userDetails.first_name || '',
-            access_expires: new Date(0), 
-            join_date: new Date(),
-        };
-        await usersCollection().insertOne(newUser);
-        return newUser;
+    if (userString) {
+        return JSON.parse(userString);
     }
-    return user;
+    
+    // User not found, create a new one
+    const newUser = {
+        id: userId,
+        username: userDetails.username || '',
+        first_name: userDetails.first_name || '',
+        access_expires: new Date(0).toISOString(), // Use ISO string for KV storage
+        join_date: new Date().toISOString(),
+        total_access_grants: 0
+    };
+    
+    // Save to KV
+    await USER_DATA_KV.put(key, JSON.stringify(newUser));
+    return newUser;
 }
 
 async function hasAccess(userId) {
-    if (!db) await connectDB();
-    const user = await usersCollection().findOne({ _id: userId });
-    if (!user) return false;
-    return user.access_expires.getTime() > new Date().getTime();
+    const key = `user_${userId}`;
+    const userString = await USER_DATA_KV.get(key);
+    if (!userString) return false;
+
+    const user = JSON.parse(userString);
+    const expiryDate = new Date(user.access_expires);
+    return expiryDate.getTime() > new Date().getTime();
 }
 
 async function grant24HourAccess(userId) {
-    if (!db) await connectDB();
+    const key = `user_${userId}`;
+    let userString = await USER_DATA_KV.get(key);
+    let user = JSON.parse(userString);
+
     const newExpiryTime = new Date(new Date().getTime() + 24 * 60 * 60 * 1000); 
-    await usersCollection().updateOne(
-        { _id: userId },
-        { $set: { access_expires: newExpiryTime } }
-    );
+    
+    user.access_expires = newExpiryTime.toISOString();
+    user.total_access_grants = (user.total_access_grants || 0) + 1;
+
+    // Save back to KV
+    await USER_DATA_KV.put(key, JSON.stringify(user));
 }
 
-// --- 3. KEYBOARDS ---
+async function getTutorialVideoFileId() {
+    // Stored as a simple config key
+    return USER_DATA_KV.get('config_tutorial_video_id');
+}
+
+// --- 3. KEYBOARDS (Unchanged) ---
 const accessKeyboard = () => {
     return Markup.inlineKeyboard([
         [
@@ -90,7 +93,6 @@ const videoKeyboard = (mediaUrl) => {
 // --- 4. TELEGRAM HANDLERS ---
 
 bot.start(async (ctx) => {
-    await connectDB();
     const userDetails = ctx.from;
     await getOrCreateUser(userDetails.id, userDetails);
 
@@ -103,7 +105,6 @@ bot.start(async (ctx) => {
         );
     }
 
-    // *** সংশোধিত অংশ ***
     const welcomeText = `
 👋 **Welcome! I'm your Terabox Video Viewer Bot.**
 
@@ -116,7 +117,6 @@ Please provide your **Terabox video link** 👇
 });
 
 bot.on('text', async (ctx) => {
-    await connectDB();
     const text = ctx.message.text.trim();
     const userId = ctx.from.id;
 
@@ -128,6 +128,7 @@ bot.on('text', async (ctx) => {
         const loadingMsg = await ctx.reply('🔄 Loading video... Please wait.');
 
         try {
+            // API Call remains the same
             const fullApiUrl = `${TERABOX_API_BASE}${encodeURIComponent(text)}`;
             const response = await axios.get(fullApiUrl, { timeout: 30000 });
             const data = response.data;
@@ -136,7 +137,6 @@ bot.on('text', async (ctx) => {
                 const mediaUrl = data.media_url;
                 const title = data.title || 'Terabox Video';
 
-                // *** সংশোধিত অংশ ***
                 const captionText = `
 🎬 **${title}**
 
@@ -174,7 +174,6 @@ It will **automatically delete in ${process.env.VIDEO_DELETE_DELAY || 20} second
         }
 
     } else {
-        // *** সংশোধিত অংশ ***
         const balanceMsg = `
 ❌ **Insufficient Balance**
 
@@ -185,8 +184,8 @@ You need **24-hour access** to view Terabox videos. Use the button below to get 
 });
 
 // --- 5. CALLBACK QUERY HANDLERS ---
-
 bot.action('get_access', async (ctx) => {
+    // ... [Logic remains the same] ...
     await ctx.answerCbQuery('Generating access link...');
 
     try {
@@ -196,7 +195,6 @@ bot.action('get_access', async (ctx) => {
         if (redirectLink.startsWith(ACCESS_REDIRECT_PREFIX)) {
             const finalLink = redirectLink;
 
-            // *** সংশোধিত অংশ ***
             const linkMessage = `
 🔗 **24 Hour Access Link**
 
@@ -222,25 +220,23 @@ To confirm your access, **click the link below**. Complete the steps on the link
 });
 
 bot.action('show_tutorial', async (ctx) => {
-    await connectDB();
     await ctx.answerCbQuery('Sending tutorial video...');
 
-    try {
-        const config = await configCollection().findOne({ _id: 'tutorial_video' });
-        const fileId = config ? config.file_id : null;
+    const fileId = await getTutorialVideoFileId();
 
-        if (fileId) {
+    if (fileId) {
+        try {
             await ctx.replyWithVideo(
                 fileId, {
                     caption: "▶️ **Tutorial Video**\n\nWatch the video and follow the steps to get 24 hours access."
                 }
             );
-        } else {
-            await ctx.reply("❌ Sorry, the tutorial video has not been set by the admin yet.");
+        } catch (error) {
+            console.error("Error sending tutorial video:", error.message);
+            await ctx.reply("❌ Sorry, the tutorial video could not be sent.");
         }
-    } catch (error) {
-        console.error("Error in show_tutorial callback:", error.message);
-        await ctx.reply("❌ Sorry, the tutorial video could not be sent.");
+    } else {
+        await ctx.reply("❌ Sorry, the tutorial video has not been set by the admin yet.");
     }
 });
 
@@ -257,35 +253,33 @@ bot.command('setvideo', async (ctx) => {
 
 bot.on('video', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return; 
-    await connectDB();
 
     const videoFileId = ctx.message.video.file_id;
 
-    await configCollection().updateOne(
-        { _id: 'tutorial_video' },
-        { $set: { file_id: videoFileId } },
-        { upsert: true }
-    );
+    // Save file ID to KV
+    await USER_DATA_KV.put('config_tutorial_video_id', videoFileId);
 
     ctx.reply("✅ **Tutorial video successfully set!**");
 });
 
 bot.command('usercount', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.reply("❌ You do not have admin access.");
-    await connectDB();
 
     try {
-        const count = await usersCollection().countDocuments({});
-        ctx.reply(`👥 **Total User Count:** ${count} users.`);
+        // KV list method to get all keys, then filter and count users
+        const listResponse = await USER_DATA_KV.list();
+        // Filter keys that start with 'user_'
+        const userKeys = listResponse.keys.filter(k => k.name.startsWith('user_'));
+        
+        ctx.reply(`👥 **Total User Count:** ${userKeys.length} users.`);
     } catch (error) {
-        console.error("Error fetching user count:", error);
+        console.error("Error fetching user count from KV:", error);
         ctx.reply("❌ Could not fetch user count from DB.");
     }
 });
 
 bot.command('broadcast', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.reply("❌ You do not have admin access.");
-    await connectDB();
 
     const broadcastText = ctx.message.text.replace('/broadcast', '').trim();
 
@@ -302,17 +296,20 @@ bot.command('broadcast', async (ctx) => {
     let successCount = 0;
     let failureCount = 0;
     
-    const usersCursor = usersCollection().find({}, { projection: { _id: 1 } });
-    
-    await usersCursor.forEach(async (user) => {
+    // Get all user keys from KV
+    const listResponse = await USER_DATA_KV.list();
+    const userKeys = listResponse.keys.filter(k => k.name.startsWith('user_'));
+
+    for (const userKey of userKeys) {
+        const userId = parseInt(userKey.name.replace('user_', ''));
         try {
-            await ctx.telegram.sendMessage(user._id, broadcastText, { parse_mode: 'HTML' });
+            await ctx.telegram.sendMessage(userId, broadcastText, { parse_mode: 'HTML' });
             successCount++;
             await new Promise(resolve => setTimeout(resolve, 50)); 
         } catch (error) {
             failureCount++;
         }
-    });
+    }
 
     await ctx.telegram.editMessageText(
         statusMsg.chat.id, 
@@ -326,6 +323,7 @@ bot.command('broadcast', async (ctx) => {
 async function handleUpdate(request) {
     try {
         const update = await request.json();
+        // Telegraf handles the update, including DB logic (KV)
         await bot.handleUpdate(update);
         return new Response('OK', { status: 200 });
     } catch (error) {
@@ -338,6 +336,6 @@ addEventListener('fetch', event => {
     if (event.request.method === 'POST') {
         event.respondWith(handleUpdate(event.request));
     } else {
-        event.respondWith(new Response('Terabox Bot Worker is Running. Please set the Webhook URL.', { status: 200 }));
+        event.respondWith(new Response('Terabox Bot Worker is Running. KV Data Store Active.', { status: 200 }));
     }
 });
