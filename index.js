@@ -8,28 +8,28 @@ const mongoose = require('mongoose');
 // 1. CONFIGURATION (REPLACE WITH YOUR ACTUAL VALUES)
 // =========================================================
 
-// Ensure these match your actual setup. Using hardcoded values for simplicity.
-const BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE";
-const MONGO_URI = "YOUR_MONGODB_CONNECTION_STRING_HERE"; 
-const ADMIN_IDS_RAW = "1234567890,9876543210"; // Replace with your numeric Telegram User IDs
+const BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"; // Your Bot Token
+const MONGO_URI = "YOUR_MONGODB_CONNECTION_STRING_HERE"; // Your MongoDB URI
+const ADMIN_IDS_RAW = "1234567890,9876543210"; // Your numeric Telegram User IDs (comma-separated)
 const ADMIN_IDS = ADMIN_IDS_RAW.split(',').map(id => parseInt(id.trim()));
 
 // TeraBox and Access APIs
 const VPLINK_API_URL = "https://vplink.in/api?api=bbdcdbe30fa584eb68269dd61da632c591b2ee80&url=https://t.me/TERABOX_0_BOT&alias=terabot&format=text";
 const TERABOX_DL_API = "https://wadownloader.amitdas.site/api/TeraBox/main/?url=";
+const VIDEO_DELETE_DELAY_MS = 20000; // 20 seconds
 
 // =========================================================
 // 2. MONGODB SCHEMA AND CONNECTION
 // =========================================================
 
 const userSchema = new mongoose.Schema({
-    _id: Number, // Telegram User ID
+    _id: Number, 
     username: String,
     access_expires: { type: Date, default: () => new Date(Date.now() - 1000) }
 });
 
 const configSchema = new mongoose.Schema({
-    _id: String, // e.g., 'tutorial_video_id'
+    _id: String,
     value: String
 });
 
@@ -42,7 +42,7 @@ mongoose.connect(MONGO_URI)
 
 
 // =========================================================
-// 3. UTILITY FUNCTIONS
+// 3. UTILITY AND DB FUNCTIONS
 // =========================================================
 
 function isAdmin(userId) {
@@ -67,7 +67,7 @@ async function hasActiveAccess(userId) {
 }
 
 async function add24HourAccess(userId) {
-    const newExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+    const newExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); 
     await User.findByIdAndUpdate(userId, { access_expires: newExpiry }, { upsert: true });
 }
 
@@ -84,7 +84,14 @@ async function setConfig(key, value) {
 // =========================================================
 // 4. TELEGRAF BOT INITIALIZATION AND HANDLERS
 // =========================================================
+
 const bot = new Telegraf(BOT_TOKEN);
+// Simple session state management for /setvideo
+bot.use((ctx, next) => {
+    ctx.session = ctx.session || {};
+    next();
+});
+
 
 // --- /start Command ---
 bot.start(async (ctx) => {
@@ -93,9 +100,7 @@ bot.start(async (ctx) => {
     
     await ensureUserExists(userId, username);
     
-    const hasAccess = await hasActiveAccess(userId);
-
-    // Logic: If user returns via /start after clicking vplink, grant access.
+    // Logic: If user returns via /start (e.g., from vplink), grant access.
     if (ctx.startPayload) {
         await add24HourAccess(userId);
         return ctx.replyWithMarkdown(
@@ -105,15 +110,17 @@ bot.start(async (ctx) => {
         );
     }
 
+    const hasAccess = await hasActiveAccess(userId);
+
     if (hasAccess) {
         // Active Access
         return ctx.replyWithMarkdown(
             `👋 **Welcome ${ctx.from.first_name}!**\n` +
             "✅ You currently have active 24-hour access.\n\n" +
-            "⬇️ **Please send the TeraBox video link, and I will download it for you.**",
+            "⬇️ **Please send the TeraBox video link.**",
         );
     } else {
-        // Insufficient Balance / No Access (Initial message for non-subscribers)
+        // Insufficient Balance / No Access 
         const keyboard = Markup.inlineKeyboard([
             [
                 Markup.button.callback('🔓 Get 24 Hours Access', 'get_access'),
@@ -124,7 +131,7 @@ bot.start(async (ctx) => {
         return ctx.replyWithMarkdown(
             `👋 **Welcome ${ctx.from.first_name}!**\n` +
             "⬇️ Please send the TeraBox video link.\n\n" +
-            "🚨 **Insufficient Balance.** You need to purchase 24-hour access to use the downloader.",
+            "🚨 **Insufficient Balance.** You need to purchase 24-hour access.",
             keyboard
         );
     }
@@ -140,7 +147,7 @@ bot.action('get_access', async (ctx) => {
     try {
         // Request to vplink.in API
         const response = await axios.get(VPLINK_API_URL, { timeout: 15000 });
-        const accessLink = response.data.trim(); // Expecting "https://vplink.in/terabot" or similar
+        const accessLink = response.data.trim(); 
         
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.url('🔗 Click Here to Get Access', accessLink)]
@@ -165,10 +172,11 @@ bot.action('access_tutorial', async (ctx) => {
     const videoFileId = await getConfig('tutorial_video_id');
     
     if (videoFileId) {
+        // Send the video
         await ctx.replyWithVideo(videoFileId, {
             caption: "▶️ **Tutorial Video for 24-Hour Access**"
         });
-        // We edit the button message to confirm action
+        // Edit the original message to reflect the action
         await ctx.editMessageText("Tutorial video sent above. Please check it.");
     } else {
         await ctx.editMessageText("❌ Admin has not set the tutorial video yet.");
@@ -186,7 +194,7 @@ bot.on('text', async (ctx) => {
         return; 
     }
 
-    // 1. Access Check (Strictly enforce)
+    // 1. Access Check
     const hasAccess = await hasActiveAccess(userId);
     if (!hasAccess) {
         const keyboard = Markup.inlineKeyboard([
@@ -214,7 +222,7 @@ bot.on('text', async (ctx) => {
         if (data.status === "success" && data.media_url) {
             const { media_url, title, thumbnail } = data;
 
-            // Caption text as requested
+            // Caption text as requested 
             const videoCaption = `🎥 **${title}**\n\n` +
                                  "⚠️ video ko forward karke save kar lo 20 second me delete ho jayega";
 
@@ -227,7 +235,7 @@ bot.on('text', async (ctx) => {
             const sentMessage = await ctx.replyWithVideo(media_url, {
                 caption: videoCaption,
                 thumbnail: thumbnail, 
-                supports_streaming: true, // Allows playback on Telegram
+                supports_streaming: true,
                 reply_markup: downloadKeyboard,
                 parse_mode: 'Markdown'
             });
@@ -236,15 +244,13 @@ bot.on('text', async (ctx) => {
             await ctx.deleteMessage(processingMsg.message_id);
 
             // 3. Auto-Delete Logic (20 seconds)
-            // Note: This relies on the Worker's runtime environment supporting setTimeout for background tasks.
             setTimeout(async () => {
                 try {
                     await ctx.deleteMessage(sentMessage.message_id);
-                    console.log(`Message ${sentMessage.message_id} auto-deleted.`);
                 } catch (e) {
                     console.error("Failed to auto-delete message:", e.message);
                 }
-            }, 20000); // 20 seconds
+            }, VIDEO_DELETE_DELAY_MS); 
             
         } else {
             await ctx.reply(`❌ Failed to process video: ${data.message || 'Unknown error.'}`);
@@ -264,8 +270,9 @@ bot.on('text', async (ctx) => {
 // --- /setvideo ---
 bot.command('setvideo', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply("🚫 Access Denied.");
-    ctx.session = ctx.session || {};
-    ctx.session.waitingForVideo = true; // Set state to listen for next video message
+    
+    // Set state to listen for next video message
+    ctx.session.waitingForVideo = true; 
     await ctx.reply("Please send the tutorial video now. I will save its file ID.");
 });
 
@@ -314,7 +321,6 @@ bot.command('broadcast', async (ctx) => {
             sentCount++;
             await new Promise(resolve => setTimeout(resolve, 50)); 
         } catch (e) {
-            // Error handling for users who blocked the bot
             if (e.message.includes('bot was blocked by the user')) {
                 blockedCount++;
             }
@@ -330,22 +336,20 @@ bot.command('broadcast', async (ctx) => {
 
 
 // =========================================================
-// 6. CLOUDFLARE WORKER WEBHOOK EXPORT
+// 6. CLOUDFLARE WORKER WEBHOOK EXPORT (ES Module Format)
 // =========================================================
-// This is required for deployment on Cloudflare Workers (CI/CD)
-// Ensure you have added compatibility_flags = ["nodejs_compat"] to wrangler.toml
+// This exports the fetch handler required for Cloudflare Workers.
 
 module.exports = {
     async fetch(request) {
         if (request.method === 'POST') {
             try {
-                // Telegraf requires session for the /setvideo state; use telegraf's session middleware if needed.
-                // For this simple state management, we rely on Node.js/global state, which is risky in Workers.
                 const update = await request.json();
                 await bot.handleUpdate(update); 
                 return new Response('OK', { status: 200 });
             } catch (e) {
                 console.error('Webhook Error:', e);
+                // Important: Return 200 even on error to prevent Telegram retries
                 return new Response('Error Processing Update', { status: 200 }); 
             }
         }
