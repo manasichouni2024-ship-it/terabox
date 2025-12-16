@@ -1,15 +1,15 @@
-// index.js - চূড়ান্ত ফিক্স (Mongoose-এর জন্য require() ব্যবহার)
+// index.js - Node.js Long Polling সংস্করণ (Mongoose-এর সাথে সম্পূর্ণ সামঞ্জস্যপূর্ণ)
 
-const { Telegraf, Markup } = require('telegraf'); // Reverting to require
-const axios = require('axios'); // Reverting to require
-const mongoose = require('mongoose'); // <-- FIX: Using require() for compatibility
+const { Telegraf, Markup } = require('telegraf'); 
+const axios = require('axios'); 
+const mongoose = require('mongoose'); 
 
 // =========================================================
 // 1. CONFIGURATION (USER-PROVIDED VALUES)
 // =========================================================
 
 const BOT_TOKEN = "8545244121:AAGovQWgpng0WkrKJfjQ6HmtWkK3izZJ0tg"; // Your Bot Token
-const MONGO_URI = "mongodb+srv://manasichouni2024_db_user:sayan6799@cluster0.jsolkip.mongodb.net/?appName=Cluster0"; // Your MongoDB URI
+const MONGO_URI = "mongodb+srv://manasichouni2024_db_user:manasi6799@cluster0.jsolkip.mongodb.net/?appName=Cluster0"; // Your MongoDB URI
 const ADMIN_IDS_RAW = "6295533968,9876543210"; // Your numeric Telegram User IDs (comma-separated)
 const ADMIN_IDS = ADMIN_IDS_RAW.split(',').map(id => parseInt(id.trim()));
 
@@ -19,7 +19,7 @@ const TERABOX_DL_API = "https://wadownloader.amitdas.site/api/TeraBox/main/?url=
 const VIDEO_DELETE_DELAY_MS = 20000; // 20 seconds
 
 // =========================================================
-// 2. MONGODB SCHEMA AND CONNECTION (RESTRUCTUREড)
+// 2. MONGODB SCHEMA AND CONNECTION 
 // =========================================================
 
 let isConnected = false;
@@ -47,14 +47,19 @@ async function connectToDatabase() {
     }
 
     try {
-        await mongoose.connect(MONGO_URI);
+        // FIX: Mongoose connection in Node.js environment
+        await mongoose.connect(MONGO_URI); 
         isConnected = true;
         console.log('✅ MongoDB connection successful.');
     } catch (err) {
         console.error('❌ MongoDB connection failed:', err);
+        // Node.js environment may exit or retry, depending on setup.
+        process.exit(1); 
     }
 }
 
+// Mongoose-কে একবারই কানেক্ট করার জন্য ফাংশনটি কল করুন।
+connectToDatabase(); 
 
 // =========================================================
 // 3. UTILITY AND DB FUNCTIONS 
@@ -64,8 +69,10 @@ function isAdmin(userId) {
     return ADMIN_IDS.includes(userId);
 }
 
+// NOTE: connectToDatabase() is called at the start of the script, 
+// so no need to call it inside every DB function.
+
 async function ensureUserExists(userId, username) {
-    await connectToDatabase();
     let user = await User.findById(userId);
     if (!user) {
         user = new User({ _id: userId, username: username });
@@ -75,8 +82,8 @@ async function ensureUserExists(userId, username) {
 }
 
 async function hasActiveAccess(userId) {
-    await connectToDatabase();
     const user = await User.findById(userId);
+    // Check if user exists, access_expires exists, and access_expires is in the future
     if (user && user.access_expires && user.access_expires > new Date()) {
         return true;
     }
@@ -84,19 +91,16 @@ async function hasActiveAccess(userId) {
 }
 
 async function add24HourAccess(userId) {
-    await connectToDatabase();
     const newExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); 
     await User.findByIdAndUpdate(userId, { access_expires: newExpiry }, { upsert: true });
 }
 
 async function getConfig(key) {
-    await connectToDatabase();
     const config = await Config.findById(key);
     return config ? config.value : null;
 }
 
 async function setConfig(key, value) {
-    await connectToDatabase();
     await Config.findByIdAndUpdate(key, { value: value }, { upsert: true });
 }
 
@@ -106,10 +110,12 @@ async function setConfig(key, value) {
 // =========================================================
 
 const bot = new Telegraf(BOT_TOKEN);
-// Simple session state management for /setvideo
+// Telegraf session or simple state management (using memory-based state for simplicity)
+const userSession = {}; 
 bot.use((ctx, next) => {
-    ctx.session = ctx.session || {};
+    ctx.session = userSession[ctx.from.id] || {};
     next();
+    userSession[ctx.from.id] = ctx.session;
 });
 
 // --- /start Command ---
@@ -196,7 +202,12 @@ bot.action('access_tutorial', async (ctx) => {
             caption: "▶️ **২৪-ঘণ্টার অ্যাক্সেস নেওয়ার টিউটোরিয়াল ভিডিও**"
         });
         // Edit the original message to reflect the action
-        await ctx.editMessageText("টিউটোরিয়াল ভিডিওটি উপরে পাঠানো হয়েছে।");
+        // Use try/catch because editMessageText might fail if the message is too old
+        try {
+            await ctx.editMessageText("টিউটোরিয়াল ভিডিওটি উপরে পাঠানো হয়েছে।");
+        } catch (e) {
+             console.error("Failed to edit message:", e.message);
+        }
     } else {
         await ctx.editMessageText("❌ অ্যাডমিন এখনও কোনো টিউটোরিয়াল ভিডিও সেট করেননি।");
     }
@@ -215,7 +226,7 @@ bot.on('text', async (ctx) => {
 
     // 1. Access Check
     const hasAccess = await hasActiveAccess(userId);
-    if (!hasAccess) {
+    if (!hasAccess && !isAdmin(userId)) { // Admin bypass check
         const keyboard = Markup.inlineKeyboard([
             [
                 Markup.button.callback('🔓 Get 24 Hours Access', 'get_access'),
@@ -265,7 +276,8 @@ bot.on('text', async (ctx) => {
             // 3. Auto-Delete Logic (20 seconds)
             setTimeout(async () => {
                 try {
-                    await ctx.deleteMessage(sentMessage.message_id);
+                    // Use ctx.telegram for deletion outside the immediate context
+                    await ctx.telegram.deleteMessage(sentMessage.chat.id, sentMessage.message_id);
                 } catch (e) {
                     console.error("Failed to auto-delete message:", e.message);
                 }
@@ -314,7 +326,6 @@ bot.on('video', async (ctx, next) => {
 bot.command('usercount', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply("🚫 Access Denied.");
     
-    await connectToDatabase();
     const count = await User.countDocuments({});
     await ctx.replyWithMarkdown(`📊 বটের মোট ইউজারের সংখ্যা: **${count}** জন।`);
 });
@@ -329,8 +340,6 @@ bot.command('broadcast', async (ctx) => {
         return ctx.reply("দয়া করে /broadcast এর পর আপনার মেসেজটি দিন।");
     }
 
-    // Ensure connection before fetching users
-    await connectToDatabase();
     const users = await User.find({});
     let sentCount = 0;
     let blockedCount = 0;
@@ -343,8 +352,11 @@ bot.command('broadcast', async (ctx) => {
             sentCount++;
             await new Promise(resolve => setTimeout(resolve, 50)); 
         } catch (e) {
-            if (e.message.includes('bot was blocked by the user')) {
+            // Check for specific error codes/messages indicating a blocked bot
+            if (e.message.includes('bot was blocked by the user') || e.code === 403) {
                 blockedCount++;
+            } else {
+                 console.error(`Error sending message to user ${user._id}:`, e.message);
             }
         }
     }
@@ -358,25 +370,19 @@ bot.command('broadcast', async (ctx) => {
 
 
 // =========================================================
-// 6. CLOUDFLARE WORKER WEBHOOK EXPORT 
+// 6. START BOT (Node.js Long Polling) 
 // =========================================================
 
-export default { 
-    async fetch(request) {
-        // Attempt connection at the start of the request
-        await connectToDatabase(); 
+// Graceful stop
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-        if (request.method === 'POST') {
-            try {
-                const update = await request.json();
-                await bot.handleUpdate(update); 
-                return new Response('OK', { status: 200 });
-            } catch (e) {
-                console.error('Webhook Error:', e);
-                // Return 200 even on error to prevent Telegram retries
-                return new Response('Error Processing Update', { status: 200 }); 
-            }
-        }
-        return new Response('TeraBox Bot Worker Running!', { status: 200 });
-    }
-};
+// Start the bot using Long Polling (suitable for Node.js servers)
+bot.launch()
+    .then(() => {
+        console.log('🚀 Bot started (Long Polling)');
+    })
+    .catch((err) => {
+        console.error('❌ Bot launch failed:', err);
+        process.exit(1);
+    });
