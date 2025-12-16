@@ -1,6 +1,7 @@
 // Cloudflare Workers environment loads secrets automatically.
-const { Telegraf, Markup } = require('telegraf');
-const axios = require('axios');
+// 1. Convert require to import
+import { Telegraf, Markup } from 'telegraf';
+import axios from 'axios';
 
 // --- 1. CONFIGURATION (Loaded from Cloudflare Secrets) ---
 // KV Binding is exposed as a global variable: USER_DATA_KV
@@ -15,7 +16,7 @@ const VIDEO_DELETE_DELAY = parseInt(process.env.VIDEO_DELETE_DELAY) * 1000; // i
 // Initialize Bot (in Webhook Mode)
 const bot = new Telegraf(BOT_TOKEN); 
 
-// --- 2. KV HELPER FUNCTIONS (MongoDB replacement) ---
+// --- 2. KV HELPER FUNCTIONS (Unchanged, use USER_DATA_KV directly) ---
 
 async function getOrCreateUser(userId, userDetails) {
     const key = `user_${userId}`;
@@ -30,12 +31,11 @@ async function getOrCreateUser(userId, userDetails) {
         id: userId,
         username: userDetails.username || '',
         first_name: userDetails.first_name || '',
-        access_expires: new Date(0).toISOString(), // Use ISO string for KV storage
+        access_expires: new Date(0).toISOString(), 
         join_date: new Date().toISOString(),
         total_access_grants: 0
     };
     
-    // Save to KV
     await USER_DATA_KV.put(key, JSON.stringify(newUser));
     return newUser;
 }
@@ -60,12 +60,10 @@ async function grant24HourAccess(userId) {
     user.access_expires = newExpiryTime.toISOString();
     user.total_access_grants = (user.total_access_grants || 0) + 1;
 
-    // Save back to KV
     await USER_DATA_KV.put(key, JSON.stringify(user));
 }
 
 async function getTutorialVideoFileId() {
-    // Stored as a simple config key
     return USER_DATA_KV.get('config_tutorial_video_id');
 }
 
@@ -88,13 +86,12 @@ const videoKeyboard = (mediaUrl) => {
 };
 
 
-// --- 4. TELEGRAM HANDLERS ---
+// --- 4. TELEGRAM HANDLERS (Unchanged) ---
 
 bot.start(async (ctx) => {
     const userDetails = ctx.from;
     await getOrCreateUser(userDetails.id, userDetails);
 
-    // Check for access link redirect
     const fullCommand = ctx.message.text;
     if (fullCommand && fullCommand.includes(ACCESS_REDIRECT_PREFIX)) {
         await grant24HourAccess(userDetails.id);
@@ -151,7 +148,6 @@ It will **automatically delete in ${process.env.VIDEO_DELETE_DELAY || 20} second
 
                 await ctx.deleteMessage(loadingMsg.message_id);
 
-                // Automatic message deletion 
                 setTimeout(async () => {
                     try {
                         await ctx.telegram.deleteMessage(sentMessage.chat.id, sentMessage.message_id);
@@ -180,8 +176,7 @@ You need **24-hour access** to view Terabox videos. Use the button below to get 
     }
 });
 
-// --- 5. CALLBACK QUERY HANDLERS ---
-
+// ... (Other handlers like bot.action, bot.on, bot.command are unchanged) ...
 bot.action('get_access', async (ctx) => {
     await ctx.answerCbQuery('Generating access link...');
 
@@ -237,8 +232,6 @@ bot.action('show_tutorial', async (ctx) => {
     }
 });
 
-// --- 6. ADMIN COMMANDS ---
-
 bot.command('setvideo', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.reply("❌ You do not have admin access.");
 
@@ -253,7 +246,6 @@ bot.on('video', async (ctx) => {
 
     const videoFileId = ctx.message.video.file_id;
 
-    // Save file ID to KV
     await USER_DATA_KV.put('config_tutorial_video_id', videoFileId);
 
     ctx.reply("✅ **Tutorial video successfully set!**");
@@ -263,9 +255,7 @@ bot.command('usercount', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.reply("❌ You do not have admin access.");
 
     try {
-        // KV list method to get all keys, then filter and count users
         const listResponse = await USER_DATA_KV.list();
-        // Filter keys that start with 'user_'
         const userKeys = listResponse.keys.filter(k => k.name.startsWith('user_'));
         
         ctx.reply(`👥 **Total User Count:** ${userKeys.length} users.`);
@@ -293,7 +283,6 @@ bot.command('broadcast', async (ctx) => {
     let successCount = 0;
     let failureCount = 0;
     
-    // Get all user keys from KV
     const listResponse = await USER_DATA_KV.list();
     const userKeys = listResponse.keys.filter(k => k.name.startsWith('user_'));
 
@@ -315,12 +304,21 @@ bot.command('broadcast', async (ctx) => {
     );
 });
 
-// --- 7. WORKER ENTRY POINT ---
 
-async function handleUpdate(request) {
+// --- 7. WORKER ENTRY POINT (ES Module Format) ---
+
+// Telegraf Webhook handler function
+async function webhookHandler(request) {
     try {
+        const url = new URL(request.url);
+        const secretPath = url.pathname.replace('/', ''); 
+        
+        // This is a minimal check, Telegraf handles the rest of the verification
+        if (secretPath !== BOT_TOKEN) {
+            return new Response('Invalid Request', { status: 403 });
+        }
+        
         const update = await request.json();
-        // Telegraf handles the update, including DB logic (KV)
         await bot.handleUpdate(update);
         return new Response('OK', { status: 200 });
     } catch (error) {
@@ -329,10 +327,16 @@ async function handleUpdate(request) {
     }
 }
 
-addEventListener('fetch', event => {
-    if (event.request.method === 'POST') {
-        event.respondWith(handleUpdate(event.request));
-    } else {
-        event.respondWith(new Response('Terabox Bot Worker is Running. KV Data Store Active.', { status: 200 }));
+// 2. Export the handler as the default object (Module Worker format)
+export default {
+    async fetch(request, env, ctx) {
+        // Expose KV binding and Secrets to the global scope for Telegraf access
+        globalThis.USER_DATA_KV = env.USER_DATA_KV;
+        
+        // Expose all environment variables/secrets as process.env
+        // Note: env is implicitly available globally in Worker context for bindings.
+        // For Telegraf's process.env access, we rely on nodejs_compat, but manually passing helps.
+        
+        return webhookHandler(request);
     }
-});
+};
