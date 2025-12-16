@@ -1,13 +1,14 @@
 {
-  "name": "terabox-bot-worker",
+  "name": "terabox-downloader-bot",
   "version": "1.0.0",
+  "description": "A Telegram bot for Terabox video viewing hosted on Cloudflare Workers.",
   "main": "index.js",
   "scripts": {
-    "deploy": "wrangler deploy"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "telegraf": "^4.16.3",
-    "axios": "^1.6.5",
-    "mongoose": "^8.20.3"
+    "telegraf": "^4.16.1",
+    "mongodb": "^6.3.0",
+    "axios": "^1.6.8"
   }
 }
