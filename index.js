@@ -103,7 +103,7 @@ bot.start(async (ctx) => {
         );
     }
 
-    // --- FIX APPLIED HERE: Using Template Literals (Backticks) ---
+    // *** সংশোধিত অংশ ***
     const welcomeText = `
 👋 **Welcome! I'm your Terabox Video Viewer Bot.**
 
@@ -136,6 +136,7 @@ bot.on('text', async (ctx) => {
                 const mediaUrl = data.media_url;
                 const title = data.title || 'Terabox Video';
 
+                // *** সংশোধিত অংশ ***
                 const captionText = `
 🎬 **${title}**
 
@@ -173,6 +174,7 @@ It will **automatically delete in ${process.env.VIDEO_DELETE_DELAY || 20} second
         }
 
     } else {
+        // *** সংশোধিত অংশ ***
         const balanceMsg = `
 ❌ **Insufficient Balance**
 
@@ -194,6 +196,7 @@ bot.action('get_access', async (ctx) => {
         if (redirectLink.startsWith(ACCESS_REDIRECT_PREFIX)) {
             const finalLink = redirectLink;
 
+            // *** সংশোধিত অংশ ***
             const linkMessage = `
 🔗 **24 Hour Access Link**
 
@@ -301,7 +304,6 @@ bot.command('broadcast', async (ctx) => {
     
     const usersCursor = usersCollection().find({}, { projection: { _id: 1 } });
     
-    // Note: await usersCursor.forEach is used for better async iteration in workers
     await usersCursor.forEach(async (user) => {
         try {
             await ctx.telegram.sendMessage(user._id, broadcastText, { parse_mode: 'HTML' });
@@ -333,11 +335,9 @@ async function handleUpdate(request) {
 }
 
 addEventListener('fetch', event => {
-    // We only care about POST requests from Telegram
     if (event.request.method === 'POST') {
         event.respondWith(handleUpdate(event.request));
     } else {
-        // Response for Webhook testing or GET requests
         event.respondWith(new Response('Terabox Bot Worker is Running. Please set the Webhook URL.', { status: 200 }));
     }
 });
