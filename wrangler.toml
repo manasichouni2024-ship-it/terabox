@@ -1,9 +1,6 @@
-
-
-name = "terabox-video-bot"
+name = "terabox"
 main = "index.js"
 
-compatibility_date = "2024-09-23" 
-
+compatibility_date = "2024-09-23"
 
 compatibility_flags = ["nodejs_compat"]
