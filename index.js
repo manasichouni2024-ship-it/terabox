@@ -5,7 +5,7 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 
 // =========================================================
-// 1. CONFIGURATION (REPLACE WITH YOUR ACTUAL VALUES)
+// 1. CONFIGURATION (USER-PROVIDED VALUES)
 // =========================================================
 
 const BOT_TOKEN = "8545244121:AAGovQWgpng0WkrKJfjQ6HmtWkK3izZJ0tg"; // Your Bot Token
@@ -13,7 +13,7 @@ const MONGO_URI = "mongodb+srv://manasichouni2024_db_user:sayan6799@cluster0.jso
 const ADMIN_IDS_RAW = "6295533968,9876543210"; // Your numeric Telegram User IDs (comma-separated)
 const ADMIN_IDS = ADMIN_IDS_RAW.split(',').map(id => parseInt(id.trim()));
 
-// TeraBox and Access APIs
+// TeraBox and Access APIs (Fixed)
 const VPLINK_API_URL = "https://vplink.in/api?api=bbdcdbe30fa584eb68269dd61da632c591b2ee80&url=https://t.me/TERABOX_0_BOT&alias=terabot&format=text";
 const TERABOX_DL_API = "https://wadownloader.amitdas.site/api/TeraBox/main/?url=";
 const VIDEO_DELETE_DELAY_MS = 20000; // 20 seconds
@@ -104,9 +104,9 @@ bot.start(async (ctx) => {
     if (ctx.startPayload) {
         await add24HourAccess(userId);
         return ctx.replyWithMarkdown(
-            `🥳 **Congratulations ${ctx.from.first_name}!**\n` +
-            "Your 24-hour access has been successfully activated.\n\n" +
-            "⬇️ **Now, please send the TeraBox video link.**"
+            `🥳 **অভিনন্দন ${ctx.from.first_name}!**\n` +
+            "আপনার ২৪-ঘণ্টার অ্যাক্সেস সফলভাবে যুক্ত হয়েছে।\n\n" +
+            "⬇️ **এবার TeraBox ভিডিওর লিঙ্কটি দিন, আমি ডাউনলোড করে দেব।**"
         );
     }
 
@@ -115,9 +115,9 @@ bot.start(async (ctx) => {
     if (hasAccess) {
         // Active Access
         return ctx.replyWithMarkdown(
-            `👋 **Welcome ${ctx.from.first_name}!**\n` +
-            "✅ You currently have active 24-hour access.\n\n" +
-            "⬇️ **Please send the TeraBox video link.**",
+            `👋 **স্বাগতম ${ctx.from.first_name}!**\n` +
+            "✅ আপনার কাছে বর্তমানে সক্রিয় ২৪-ঘণ্টার অ্যাক্সেস আছে।\n\n" +
+            "⬇️ **TeraBox ভিডিওর লিঙ্কটি দিন, আমি ডাউনলোড করে দেব।**",
         );
     } else {
         // Insufficient Balance / No Access 
@@ -129,9 +129,9 @@ bot.start(async (ctx) => {
         ]);
         
         return ctx.replyWithMarkdown(
-            `👋 **Welcome ${ctx.from.first_name}!**\n` +
-            "⬇️ Please send the TeraBox video link.\n\n" +
-            "🚨 **Insufficient Balance.** You need to purchase 24-hour access.",
+            `👋 **স্বাগতম ${ctx.from.first_name}!**\n` +
+            "⬇️ দয়া করে TeraBox ভিডিওর লিঙ্কটি দিন।\n\n" +
+            "🚨 **Insufficient Balance** (অপর্যাপ্ত ব্যালেন্স)। আপনাকে ২৪-ঘণ্টার অ্যাক্সেস নিতে হবে।",
             keyboard
         );
     }
@@ -142,27 +142,27 @@ bot.start(async (ctx) => {
 bot.action('get_access', async (ctx) => {
     await ctx.answerCbQuery();
     
-    await ctx.editMessageText("⏳ Generating access link, please wait...");
+    await ctx.editMessageText("⏳ অ্যাক্সেস লিঙ্ক তৈরি করা হচ্ছে, অপেক্ষা করুন...");
 
     try {
         // Request to vplink.in API
         const response = await axios.get(VPLINK_API_URL, { timeout: 15000 });
-        const accessLink = response.data.trim(); 
+        const accessLink = response.data.trim(); // Expected: "https://vplink.in/terabot"
         
         const keyboard = Markup.inlineKeyboard([
-            [Markup.button.url('🔗 Click Here to Get Access', accessLink)]
+            [Markup.button.url('🔗 এখানে ক্লিক করে অ্যাক্সেস নিন', accessLink)]
         ]);
 
         await ctx.editMessageText(
-            "✅ Access link generated successfully!\n\n" +
-            "👇 **Click the link below, complete the process, and then return to the bot and send /start.**\n" +
-            "Your 24-hour access will be added automatically.",
+            "✅ অ্যাক্সেস লিঙ্ক তৈরি হয়েছে!\n\n" +
+            "👇 **নিচের লিঙ্কে ক্লিক করুন এবং প্রক্রিয়াটি সম্পন্ন করার পর আবার /start করে বট-এ আসুন।**\n" +
+            "আপনার ২৪-ঘণ্টার অ্যাক্সেস স্বয়ংক্রিয়ভাবে যুক্ত হবে।",
             { reply_markup: keyboard, parse_mode: 'Markdown' }
         );
 
     } catch (e) {
         console.error("vplink.in API error:", e.message);
-        await ctx.editMessageText("❌ Error generating access link. Please try again later.");
+        await ctx.editMessageText("❌ অ্যাক্সেস লিঙ্ক তৈরি করার সময় নেটওয়ার্ক বা API ত্রুটি হয়েছে।");
     }
 });
 
@@ -174,12 +174,12 @@ bot.action('access_tutorial', async (ctx) => {
     if (videoFileId) {
         // Send the video
         await ctx.replyWithVideo(videoFileId, {
-            caption: "▶️ **Tutorial Video for 24-Hour Access**"
+            caption: "▶️ **২৪-ঘণ্টার অ্যাক্সেস নেওয়ার টিউটোরিয়াল ভিডিও**"
         });
         // Edit the original message to reflect the action
-        await ctx.editMessageText("Tutorial video sent above. Please check it.");
+        await ctx.editMessageText("টিউটোরিয়াল ভিডিওটি উপরে পাঠানো হয়েছে।");
     } else {
-        await ctx.editMessageText("❌ Admin has not set the tutorial video yet.");
+        await ctx.editMessageText("❌ অ্যাডমিন এখনও কোনো টিউটোরিয়াল ভিডিও সেট করেননি।");
     }
 });
 
@@ -211,7 +211,7 @@ bot.on('text', async (ctx) => {
     }
     
     // 2. Video Download Process
-    const processingMsg = await ctx.reply("⏳ Link processing started, please wait...");
+    const processingMsg = await ctx.reply("⏳ লিঙ্কটি প্রসেস করা হচ্ছে, দয়া করে অপেক্ষা করুন...");
     
     const teraboxApiUrl = `${TERABOX_DL_API}${encodeURIComponent(messageText.trim())}`;
 
@@ -222,7 +222,7 @@ bot.on('text', async (ctx) => {
         if (data.status === "success" && data.media_url) {
             const { media_url, title, thumbnail } = data;
 
-            // Caption text as requested 
+            // Caption text as requested (Hindi/Bangla mix)
             const videoCaption = `🎥 **${title}**\n\n` +
                                  "⚠️ video ko forward karke save kar lo 20 second me delete ho jayega";
 
@@ -231,7 +231,7 @@ bot.on('text', async (ctx) => {
                 [Markup.button.url("🔗 Download/Play Video (URL)", media_url)]
             ]);
 
-            // Send the video directly from the URL
+            // Send the video
             const sentMessage = await ctx.replyWithVideo(media_url, {
                 caption: videoCaption,
                 thumbnail: thumbnail, 
@@ -253,7 +253,7 @@ bot.on('text', async (ctx) => {
             }, VIDEO_DELETE_DELAY_MS); 
             
         } else {
-            await ctx.reply(`❌ Failed to process video: ${data.message || 'Unknown error.'}`);
+            await ctx.reply(`❌ ভিডিও প্রসেস করতে ব্যর্থ হয়েছে: ${data.message || 'Unknown error.'}`);
         }
 
     } catch (e) {
@@ -273,7 +273,7 @@ bot.command('setvideo', async (ctx) => {
     
     // Set state to listen for next video message
     ctx.session.waitingForVideo = true; 
-    await ctx.reply("Please send the tutorial video now. I will save its file ID.");
+    await ctx.reply("দয়া করে টিউটোরিয়াল ভিডিওটি পাঠান। আমি এটির ফাইল আইডি সেভ করে নেব।");
 });
 
 bot.on('video', async (ctx, next) => {
@@ -284,7 +284,7 @@ bot.on('video', async (ctx, next) => {
         ctx.session.waitingForVideo = false; // Reset state
 
         return ctx.replyWithMarkdown(
-            `✅ Tutorial video set successfully.\n` +
+            `✅ টিউটোরিয়াল ভিডিও সফলভাবে সেট করা হয়েছে।\n` +
             `File ID: \`${videoFileId}\``
         );
     }
@@ -296,7 +296,7 @@ bot.command('usercount', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply("🚫 Access Denied.");
     
     const count = await User.countDocuments({});
-    await ctx.replyWithMarkdown(`📊 Total user count in bot: **${count}** users.`);
+    await ctx.replyWithMarkdown(`📊 বটের মোট ইউজারের সংখ্যা: **${count}** জন।`);
 });
 
 // --- /broadcast ---
@@ -306,7 +306,7 @@ bot.command('broadcast', async (ctx) => {
     const broadcastMessage = ctx.message.text.substring(ctx.message.text.indexOf(' ') + 1);
 
     if (ctx.message.text === '/broadcast') {
-        return ctx.reply("Please provide the message after /broadcast.");
+        return ctx.reply("দয়া করে /broadcast এর পর আপনার মেসেজটি দিন।");
     }
 
     const users = await User.find({});
@@ -329,18 +329,18 @@ bot.command('broadcast', async (ctx) => {
             
     await ctx.replyWithMarkdown(
         `✅ Broadcast finished.\n` +
-        `Total sent: **${sentCount}** users.\n` +
-        `Blocked bot: **${blockedCount}** users.`
+        `মোট পাঠানো হয়েছে: **${sentCount}** জন।\n` +
+        `বট ব্লক করেছে: **${blockedCount}** জন।`
     );
 });
 
 
 // =========================================================
-// 6. CLOUDFLARE WORKER WEBHOOK EXPORT (ES Module Format)
+// 6. CLOUDFLARE WORKER WEBHOOK EXPORT (ES Module Format FIX)
 // =========================================================
-// This exports the fetch handler required for Cloudflare Workers.
+// This MUST use 'export default' for CI/CD deployment on Workers.
 
-module.exports = {
+export default { // <-- This fixes the final deployment error
     async fetch(request) {
         if (request.method === 'POST') {
             try {
@@ -349,7 +349,7 @@ module.exports = {
                 return new Response('OK', { status: 200 });
             } catch (e) {
                 console.error('Webhook Error:', e);
-                // Important: Return 200 even on error to prevent Telegram retries
+                // Return 200 even on error to prevent Telegram retries
                 return new Response('Error Processing Update', { status: 200 }); 
             }
         }
